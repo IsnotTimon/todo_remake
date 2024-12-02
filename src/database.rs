@@ -25,7 +25,7 @@ impl From<&str> for Record {
 }
 
 
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Seek, Write};
 
 use crate::db_operation::{check_db_file_or_create, get_db_file_path};
@@ -65,7 +65,44 @@ impl Database {
             .collect()
     }
 
-    // Delete file
+    // Delete record
+    pub fn remove_record(&mut self, id: i32) -> Result<(), std::io::Error> {
+        let reader = BufReader::new(&self.file);
+
+        let mut lines = reader.lines().enumerate();
+        let target_line = lines.find_map(|(i, line)| {
+            line.ok().and_then(|content| {
+                let record = Record::from(content.as_str());
+                if record.id == id {
+                    Some(i)
+                } else {
+                    None
+                }
+            })
+        });
+        let target_index = match target_line {
+            Some(index) => index,
+            None => {
+                return Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("No such record:{}",id)));
+            }
+        };
+        let db_file = get_db_file_path();
+        let contents = fs::read_to_string(&db_file)?;
+
+        let new_contents = contents
+            .lines()
+            .enumerate()
+            .filter(|(i, _)| *i != target_index)
+            .map(|(_, line)| line)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        self.file.seek(std::io::SeekFrom::Start(0))?;
+        self.file.write_all(new_contents.as_bytes())?;
+        self.file.set_len(new_contents.len() as u64)?;
+
+        Ok(())
+    }
 
 }
 
